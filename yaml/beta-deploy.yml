@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zipcodebeta
+spec:
+  selector:
+    matchLabels:
+      app: zipcodebeta
+  replicas: 1
+  template: # template for the pods
+    metadata:
+      labels:
+        app: zipcodebeta
+        version: beta
+    spec:
+      containers:
+      - name: zipcode
+        image: harbor.tibcopsg.net/cloud-demos/zipcodeexample:beta
+        ports:
+        - containerPort: 8080 
+  #      env:
+        imagePullPolicy: Always
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule       # Defining which pods should be part of each subset
+metadata:
+  name: zipcodecanary
+  namespace: default
+spec:
+  host: zipcode-service # Service
+  subsets:
+    - labels:   # SELECTOR.
+        version: latest # find pods with label "latest"
+      name: latest-group
+    - labels:
+        version: beta
+      name: beta-group
+
+kind: VirtualService
+apiVersion: networking.istio.io/v1alpha3
+metadata:
+  name: zipcodevirtualservice  # "just" a name for this virtualservice
+  namespace: default
+spec:
+  hosts:
+    - zipcode-service.default.svc.cluster.local  # The Service DNS (ie the regular K8S Service) name that we're applying routing rules to.
+  http:
+    - route:
+        - destination:
+            host: zipcode-service.default.svc.cluster.local # The Target DNS name
+            subset: latest-group  # The name defined in the DestinationRule
+          weight: 90
+        - destination:
+            host: zipcode-service.default.svc.cluster.local # The Target DNS name
+            subset: beta-group  # The name defined in the DestinationRule
+          weight: 10
+---
